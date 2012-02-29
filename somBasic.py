@@ -1,8 +1,5 @@
 # Based on the C++ implementation of ai-junkie
-
-# 37.4
-# 39.04
-# 37.5
+# it is almost a direct translation from C++ to Python
 
 from __future__ import division
 from random import random,shuffle
