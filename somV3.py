@@ -112,4 +112,3 @@ if __name__ == "__main__":
 	print time_end - time_start
 	key = cv.WaitKey()
 
-

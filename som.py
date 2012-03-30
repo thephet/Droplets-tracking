@@ -96,8 +96,8 @@ if __name__ == "__main__":
 	som = Som(sideSize, iterations, dimensions, learningRate)
 
 	training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
-	f = open('trackNorm.txt', 'r')
-	x = pickle.load(f)
+	#f = open('trackNorm.txt', 'r')
+	#x = pickle.load(f)
 	som.train(np.array(training_data))
 
 	results = cv.CreateImage( (500, 500), 8, 3)
