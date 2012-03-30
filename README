@@ -5,3 +5,4 @@ OpenCV is used for all the image processing functions. Right now all of this is 
 A Particle filter is implemented (home made) based on Condensation (not using OpenCV's condensation). It not depends on OpenCV. It is the file ParticleFilter.py
 
 A SOM was implemented based on the C++ implementation by ai-junkines, that's somBasic.py. Then it was hacked with numpy, it is quite faster and a bit different code, it is named som.py. It is also OpenCV independent apart from visualizing it, but the visualization can be performed with any other lib. 
+experimental
