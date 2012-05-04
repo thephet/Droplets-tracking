@@ -104,7 +104,7 @@ class Particle:
 	def propagate(self, propData):
 
 		ranDir = uniform(-0.5, 0.5)
-		ranDis = uniform(0, 2)
+		ranDis = uniform(0, 3)
 
 		self.x += ( (propData['speed'] + propData['acceleration']/2) 
 				* cos(propData['direction']+propData['changeDirection']+ranDir) * ranDis )

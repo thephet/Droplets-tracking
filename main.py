@@ -1,9 +1,11 @@
-import cv
-from time import time
+import cv # opencv
+import printcore # this controls the robot
+from time import time, sleep, localtime
 from math import atan2, sqrt
 import pickle
 
 import ParticleFilter as pf
+import Som.som as Som
 
 
 def mouseHandler(event, x, y, flags, param):
@@ -13,9 +15,9 @@ def mouseHandler(event, x, y, flags, param):
 	if event == cv.CV_EVENT_LBUTTONDOWN:
 		frameCopy = cv.CreateImage(cv.GetSize(param), param.depth, param.channels)
 		cv.Copy(param, frameCopy)
-		fillResult = cv.FloodFill( frameCopy, (x,y), 
+		fillResult = cv.FloodFill(frameCopy, (x,y), 
 								cv.RGB(250,0,0), 
-								cv.ScalarAll(3), cv.ScalarAll(3), 8 )
+								cv.ScalarAll(2), cv.ScalarAll(2), 8 )
 		del(frameCopy)
 
 		# generate 2 struct element for morpho operations
@@ -37,8 +39,8 @@ def mouseHandler(event, x, y, flags, param):
 		newDroplet = { 'morpho1' : cv.CreateStructuringElementEx( squareSide, 
 									squareSide, squareSide/2, squareSide/2, 
 									cv.CV_SHAPE_ELLIPSE),
-						'morpho2' : cv.CreateStructuringElementEx( squareSide/2, 
-									squareSide/2, squareSide/4, squareSide/4, 
+						'morpho2' : cv.CreateStructuringElementEx( int(squareSide/1.5), 
+									int(squareSide/1.5), int(squareSide/3), int(squareSide/3), 
 									cv.CV_SHAPE_ELLIPSE),
 						'avgColor': colorAvg,
 						'speed':0, 'acceleration':0, 'direction':0, 'changeDirection':0,
@@ -71,17 +73,41 @@ def find_connected_components(img):
 def prepare_track_data(L):
 	L = [ [ abs(item) for item in row] for row in L ] # abs the list
 	maxs = [ max(row[column] for row in L) for column in xrange(len(L[0])) ] # max for each column
-	return [ [row[i] / maxs[i]*255 for i in xrange(len(row))] for row in L] # normalize each list
+	return [ [row[i] / maxs[i] for i in xrange(len(row))] for row in L] # normalize each list
 	
 
 if __name__ == "__main__":
 
+	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	p.loud=True
+	sleep(3)
+	gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
+	p.startprint(gcode)
+	sleep(3)
+
 	cv.NamedWindow('video', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('threshold', cv.CV_WINDOW_AUTOSIZE)
+	cv.NamedWindow('path', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('particles', cv.CV_WINDOW_AUTOSIZE)
+	cv.NamedWindow('som', cv.CV_WINDOW_AUTOSIZE)
 
-	capture = cv.CreateFileCapture('droplets.mov')
-	frame = cv.QueryFrame(capture) # grab 1 frame to init everything
+	#capture = cv.CreateFileCapture('Videos/droplets.mov')
+	capture=cv.CaptureFromCAM(1) # from webcam
+	frameOriginal  = cv.QueryFrame(capture) # grab 1 frame to init everything
+
+	# prepare for undistortion
+	intrinsic = cv.Load("CamCalibration/Intrinsics.xml")
+	distortion = cv.Load("CamCalibration/Distortion.xml")
+	mapx = cv.CreateImage( cv.GetSize(frameOriginal), cv.IPL_DEPTH_32F, 1 );
+	mapy = cv.CreateImage( cv.GetSize(frameOriginal), cv.IPL_DEPTH_32F, 1 );
+	cv.InitUndistortMap(intrinsic,distortion,mapx,mapy)
+	t = cv.CloneImage(frameOriginal)
+	cv.Remap( t, frameOriginal, mapx, mapy ) # undistort
+	cv.Flip(frameOriginal, frameOriginal, 1) # flip around x because the webcam is like a mirror
+
+	s1,s2 = cv.GetSize(frameOriginal)
+	frame = cv.CreateImage( (s1/2,s2/2), frameOriginal.depth, frameOriginal.channels)
+	cv.PyrDown(frameOriginal,frame) #half size because otherwise I cannot see everything in my 13 screen
 
 	# to store the results from the color seg
 	colorThreshed = cv.CreateImage(cv.GetSize(frame), 8, 1)
@@ -89,9 +115,15 @@ if __name__ == "__main__":
 	# to show the particles
 	particlesImg = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
 
+	#to show the path
+	pathImg = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
+	cv.Set(pathImg, cv.ScalarAll(255))
+
 	key, pause = 1,1 # key is keyboard input, pause for playing/pause video
-	frame_period = 1/cv.GetCaptureProperty(capture, cv.CV_CAP_PROP_FPS)
 	FPS = cv.GetCaptureProperty(capture, cv.CV_CAP_PROP_FPS)
+	FPS = 30 # somehow the previous line returns 0 for cams. 30 is the default
+	frame_period = 1.0 / FPS
+
 
 	cv.SetMouseCallback('video', mouseHandler, frame)
 
@@ -99,8 +131,23 @@ if __name__ == "__main__":
 	frames = 0 # to count the number of frames
 	track_info = [] # a list to place position, speed, change of direction... of droplets over time
 
-	num_particles = 100
-	condensation = pf.Condensation(num_particles, 200, 0, frame.width, frame.height)
+	num_particles = 500
+	condensation = pf.Condensation(num_particles, 0, 0, frame.width, frame.height)
+
+	# to display the som
+	somImg = cv.CreateImage( (500, 500), 8, 3)
+	# to display online results, display and clear every time to just show the last
+	somImgCopy = cv.CreateImage( (500, 500), 8, 3)
+	som = Som.load('Som/data/som.dat')
+	sideSquare = 500/som.cellsSide
+
+	for i in xrange(som.cellsSide):
+		for j in xrange(som.cellsSide):
+			print (som.nodes[i,j,0]*255, som.nodes[i,j,1]*255, 0)
+			cv.Rectangle(somImg, (int(i*sideSquare), int(j*sideSquare)), 
+				(int(i*sideSquare+sideSquare), int(j*sideSquare+sideSquare)), 
+				(som.nodes[i,j,0]*255, som.nodes[i,j,1]*255, 0), 
+				cv.CV_FILLED)
 
 	while(1):
 
@@ -115,8 +162,12 @@ if __name__ == "__main__":
 			break
 			
 		if pause == 1:
-			frame = cv.QueryFrame(capture)
-			if not frame: break
+			frameOriginal  = cv.QueryFrame(capture) # grab 1 frame to init everything
+			if not frameOriginal: break
+			t = cv.CloneImage(frameOriginal)
+			cv.Remap( t, frameOriginal, mapx, mapy )
+			cv.Flip(frameOriginal, frameOriginal, 1)
+			cv.PyrDown(frameOriginal,frame)
 			cv.Copy(frame, particlesImg)
 
 		frames += 1
@@ -136,10 +187,10 @@ if __name__ == "__main__":
 
 			for current in droplets:
 				# color segmentation
-				minRange = cv.Scalar( current['avgColor'][0]-10, current['avgColor'][1]-10, 
-									current['avgColor'][2]-10 )
-				maxRange = cv.Scalar( current['avgColor'][0]+10, current['avgColor'][1]+10, 
-									current['avgColor'][2]+10 )
+				minRange = cv.Scalar( current['avgColor'][0]-12, current['avgColor'][1]-12, 
+									current['avgColor'][2]-12 )
+				maxRange = cv.Scalar( current['avgColor'][0]+12, current['avgColor'][1]+12, 
+									current['avgColor'][2]+12 )
 				colorThreshedTemp = cv.CreateImage( cv.GetSize(frame),8,1 )
 				cv.InRangeS(frame, minRange, maxRange, colorThreshedTemp)
 
@@ -150,8 +201,8 @@ if __name__ == "__main__":
 								current['morpho1'], cv.CV_MOP_OPEN ) 
 
 				cv.Xor(colorThreshed, colorThreshedTemp, colorThreshed)
-				cv.MorphologyEx( colorThreshed, colorThreshed, None,
-								current['morpho1'], cv.CV_MOP_OPEN )
+				#cv.MorphologyEx( colorThreshed, colorThreshed, None,
+				#				current['morpho1'], cv.CV_MOP_OPEN )
 
 			cv.ShowImage('threshold', colorThreshed)
 
@@ -162,20 +213,6 @@ if __name__ == "__main__":
 			if len(centers) > 0 and foundDrops == len(droplets):
 
 				for i in range(len(centers)):
-					direction = atan2( centers[i][1] - droplets[i]['lastPoint']['y'],
-									centers[i][0] - droplets[i]['lastPoint']['x'] )
-					distance = sqrt( (centers[i][0] - droplets[i]['lastPoint']['x'])**2 +
-								(centers[i][1] - droplets[i]['lastPoint']['y'])**2 )
-					speed = distance / 1
-
-					droplets[i]['acceleration'] = speed - droplets[i]['speed']
-					droplets[i]['changeDirection'] = direction - droplets[i]['direction']
-					droplets[i]['speed'] = speed
-					droplets[i]['direction'] = direction
-					droplets[i]['lastPoint']['x'] = centers[i][0]
-					droplets[i]['lastPoint']['y'] = centers[i][1]
-
-					track_info[i].append([ speed, droplets[i]['changeDirection'], 1 ])
 
 					# if the connected components found something we will update the avg color
 					# because the droplet probably moved somewhere else with diff light conditions
@@ -183,7 +220,7 @@ if __name__ == "__main__":
 					frameCopy = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
 					cv.Copy(frame, frameCopy)
 					fillResult = cv.FloodFill( frameCopy, (centers[0][0],centers[0][1]), 
-								cv.RGB(250,0,0), cv.ScalarAll(3), cv.ScalarAll(3), 8 )
+								cv.RGB(250,0,0), cv.ScalarAll(2), cv.ScalarAll(2), 8 )
 					del(frameCopy)
 
 					# generate 2 struct element for morpho operations
@@ -195,6 +232,35 @@ if __name__ == "__main__":
 					# the masks need to be odd
 					if squareSide % 2 == 0: squareSide+=1
 
+					if squareSide < 2:
+						continue
+
+					direction = atan2( centers[i][1] - droplets[i]['lastPoint']['y'],
+									centers[i][0] - droplets[i]['lastPoint']['x'] )
+					distance = sqrt( (centers[i][0] - droplets[i]['lastPoint']['x'])**2 +
+								(centers[i][1] - droplets[i]['lastPoint']['y'])**2 )
+					speed = distance / 1
+
+					cv.Line( pathImg, (droplets[i]['lastPoint']['x'], droplets[i]['lastPoint']['y']), 
+						(centers[i][0],centers[i][1]), current['avgColor'] );
+
+					droplets[i]['acceleration'] = speed - droplets[i]['speed']
+					droplets[i]['changeDirection'] = direction - droplets[i]['direction']
+					droplets[i]['speed'] = speed
+					droplets[i]['direction'] = direction
+					droplets[i]['lastPoint']['x'] = centers[i][0]
+					droplets[i]['lastPoint']['y'] = centers[i][1]
+
+					track_info[i].append([ speed, droplets[i]['changeDirection']])
+
+					# find best node in the SOM for this pair speed / change dir
+					pos = som.FindBestMatchingNode([ float(speed) / som.dimMaxs[0], float(droplets[i]['changeDirection'])/som.dimMaxs[1]])
+					sSq = 500 / som.cellsSide
+					cv.Copy(somImg, somImgCopy)
+					cv.Rectangle(somImgCopy, (int(pos[0]*sSq), int(pos[1]*sSq)), 
+						(int(pos[0]*sSq+sSq), int(pos[1]*sSq+sSq)), (0, 0, 255), cv.CV_FILLED)
+
+
 					# we capture the average color generated by the fill area
 					cv.SetImageROI( frame, (fillResult[2][0], fillResult[2][1],
 												squareSide, squareSide) )
@@ -205,29 +271,31 @@ if __name__ == "__main__":
 					current['morpho1'] = cv.CreateStructuringElementEx( squareSide, 
 												squareSide, squareSide/2, squareSide/2, 
 												cv.CV_SHAPE_ELLIPSE)
-					current['morpho2'] = cv.CreateStructuringElementEx( squareSide/2, 
-												squareSide/2, squareSide/4, squareSide/4, 
+					current['morpho2'] = cv.CreateStructuringElementEx( int(squareSide/1.5), 
+												int(squareSide/1.5), int(squareSide/3), int(squareSide/3), 
 												cv.CV_SHAPE_ELLIPSE)
 					current['avgColor'] = colorAvg
 
 		
 		cv.ShowImage('video', frame)
+		cv.ShowImage('path',pathImg)
+		cv.ShowImage('som', somImgCopy)
 
 
-		# if foundDrops == len(droplets) and len(droplets) > 0:
-		# 	condensation.propagate(droplets)
-		# 	condensation.updateWeights(droplets)
-		# 	condensation.reSampling()
-		# 	condensation.estimateState()
+		if foundDrops == len(droplets) and len(droplets) > 0:
+			condensation.propagate(droplets)
+			condensation.updateWeights(droplets)
+			condensation.reSampling()
+			condensation.estimateState()
 
-		# for particle in condensation.particles:
-		# 	cv.Circle(particlesImg, (int(particle.x), int(particle.y)), 2, 
-		# 							(0,200,200), cv.CV_FILLED)
+		for particle in condensation.particles:
+			cv.Circle(particlesImg, (int(particle.x), int(particle.y)), 2, 
+									(0,200,200), cv.CV_FILLED)
 
-		# for est in condensation.estimation:
-		# 	cv.Circle(particlesImg, (int(est['x']), int(est['y'])), 5, cv.Scalar(0,0,255), cv.CV_FILLED)
+		for est in condensation.estimation:
+			cv.Circle(particlesImg, (int(est['x']), int(est['y'])), 5, cv.Scalar(0,0,255), cv.CV_FILLED)
 
-		# cv.ShowImage('particles', particlesImg)
+		cv.ShowImage('particles', particlesImg)
 
 		time_end = time()
 		cycle_time = time_end - time_start
@@ -238,15 +306,21 @@ if __name__ == "__main__":
 
 		key = cv.WaitKey( int(delay*1000)+1 )
 
-	L = prepare_track_data(track_info[0])
-	f = open('trackblue.txt', 'w')
-	pickle.dump(L ,f)
+	#L = prepare_track_data(track_info[0])
+	newfile = 'Som/data/%d_%d_%d_%d_%d_%d.txt' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
+	f = open(newfile, 'w')
+	pickle.dump(track_info[0] ,f)
 
 	del(capture)
 	del(frame)
 	del(colorThreshed)
+	del(pathImg)
 	del(particlesImg)
+	del(somImg)
+	del(somImgCopy)
 	cv.DestroyWindow('video')
 	cv.DestroyWindow('particles')
+	cv.DestroyWindow('path')
 	cv.DestroyWindow('threshold')
+	cv.DestroyWindow('som')
 
