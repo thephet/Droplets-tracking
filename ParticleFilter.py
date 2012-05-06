@@ -9,99 +9,94 @@ class Condensation:
 		we will place the particles'''
 
 		self.numTargets = 0
-		self.numParticles = numParticles
+		self.iniX = iniX
+		self.iniY = iniY
+		self.maxX = maxX
+		self.maxY = maxY
+		self.numParticles = numParticles #num particles per target
 		self.particles = []
 		self.estimation = []
 
-		for i in range(numParticles):
-			x = uniform(iniX, maxX) #generate a ran num between iniX and maxX
-			y = uniform(iniY, maxY)
-			self.particles.append( Particle(x,y) )
-
-
 	def propagate(self, propData):
 
-		for particle in self.particles:
-			target = particle.myTarget()
-			target = propData[target]
-			particle.propagate(target)
+		for col in self.particles:
+			for particle in col:
+				target = propData[particle.myTarget]
+				particle.propagate(target)
 
 	def updateWeights(self, propData):
 
-		for particle in self.particles:
-			particle.updateWeights(propData)
+		for col in self.particles:
+			for particle in col:
+				particle.updateWeight(propData[particle.myTarget])
 
-		sum_weights = [0] * self.numTargets
-		for particle in self.particles:
-			for j in range(self.numTargets):
-				sum_weights[j] += particle.weights[j]
+			sum_weight = 0.0
+			for particle in col:
+				sum_weight += particle.weight
 
-		for particle in self.particles:
-			particle.normWeight(sum_weights)
+			for particle in col:
+				particle.normWeight(sum_weight)
 
 	def reSampling(self):
 
-		temp_particles = []
+		for t in xrange(self.numTargets):
 
-		for j in range(self.numTargets):
+			temp_particles = []
+
 			cumulative = [0] * (self.numParticles+1)
 			
-			for i in range(self.numParticles):
-				cumulative[i+1] = cumulative[i] + self.particles[i].weights[j]
+			for i in xrange(self.numParticles):
+				cumulative[i+1] = cumulative[i] + self.particles[t][i].weight
 
-			for i in range(self.numParticles/self.numTargets):
+			for i in xrange(self.numParticles):
 				ranNum = random()
 				k = 1
 				while ranNum > cumulative[k]: 
 					k+=1
-				temp_particles.append( self.particles[k-1].copy() )
+				temp_particles.append( self.particles[t][k-1].copy() )
 
-		while len(temp_particles) < self.numParticles:
-			randParticle = int( uniform( 0, self.numParticles ) )
-			temp_particles.append( self.particles[randParticle].copy() )
+			while len(temp_particles) < self.numParticles:
+				randParticle = int( uniform( 0, self.numParticles ) )
+				temp_particles.append( self.particles[t][randParticle].copy() )
 
-		self.particles = temp_particles
+			self.particles[t] = temp_particles
 
 
 	def estimateState(self):
 
-		self.estimation = [dict(x=0, y=0) for i in range(self.numTargets)]
-		x = [0] * self.numTargets
-		y = [0] * self.numTargets
-		counter = [0] * self.numTargets
+		for t in xrange(self.numTargets):
 
-		for particle in self.particles:
-			target = particle.myTarget()
-			x[target] += particle.weights[target] * particle.x
-			y[target] += particle.weights[target] * particle.y
-			counter[target] += particle.weights[target]
-
-		for i in range(self.numTargets):
-			if counter[i] > 0:
-				self.estimation[i]['x'] = x[i] / counter[i]
-				self.estimation[i]['y'] = y[i] / counter[i]
+			self.estimation[t] = dict(x=0.0, y=0.0)
+			ww = 0.0
+			for particle in self.particles[t]:
+				self.estimation[t]['x'] += particle.weight * particle.x
+				self.estimation[t]['y'] += particle.weight * particle.y
 
 
 	def addTarget(self):
-		self.numTargets+=1
-		for particle in self.particles:
-			particle.weights.append(0)
-			particle.targets.append(0)
 
+		self.particles.append([])
+		self.estimation.append(dict(x=0.0, y=0.0))
+
+		for i in range(self.numParticles):
+			x = uniform(self.iniX, self.maxX) #generate a ran num between iniX and maxX
+			y = uniform(self.iniY, self.maxY)
+			self.particles[self.numTargets].append( Particle(x,y, self.numTargets) )
+
+		self.numTargets+=1
 
 
 class Particle:
 
-	def __init__(self, inX, inY):
+	def __init__(self, inX, inY, target2follow):
 		self.x = inX
 		self.y = inY
-		self.weights = []
-		self.targets = []
+		self.weight = 0
+		self.myTarget = target2follow
 
 	def copy(self):
-		newParticle = Particle(self.x, self.y)
-		newParticle.weights = self.weights[:]
-		newParticle.targets = self.targets[:]
+		newParticle = Particle(self.x, self.y, self.myTarget)
+		newParticle.weight = self.weight
 		return newParticle
 
 	def propagate(self, propData):
@@ -115,26 +110,9 @@ class Particle:
 				* sin(propData['direction']+propData['changeDirection']+ranDir) * ranDis )
 
 
-	def updateWeights(self, propData):
-
-		for i in xrange(len(self.weights)):
-			pData = propData[i]
-			self.weights[i] = 1 / sqrt( (pData['lastPoint']['x']-self.x)**2 
-								+ (pData['lastPoint']['y']-self.y)**2 )
-			self.targets[i] += self.weights[i]
+	def updateWeight(self, propData):
+		self.weight = 1 / sqrt( (propData['lastPoint']['x']-self.x)**2 
+								+ (propData['lastPoint']['y']-self.y)**2 )
 
 	def normWeight(self, sums):
-
-		for i in xrange(len(self.weights)):
-			self.weights[i] = self.weights[i] / sums[i]
-
-	def myTarget(self):
-
-		maxTarget = 0
-		maxVal = self.targets[0]
-
-		for i in xrange(1,len(self.targets)):
-			if self.targets[i] > maxVal:
-				maxTarget = i
-				maxVal = self.targets[i]
-		return maxTarget
+		self.weight = self.weight / sums

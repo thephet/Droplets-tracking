@@ -133,7 +133,7 @@ if __name__ == "__main__":
 	frames = 0 # to count the number of frames
 	track_info = [] # a list to place position, speed, change of direction... of droplets over time
 
-	num_particles = 200
+	num_particles = 100
 	condensation = pf.Condensation(num_particles, 0, 0, frame.width, frame.height)
 
 	# # to display the som
@@ -303,14 +303,15 @@ if __name__ == "__main__":
 		if foundDrops == len(droplets) and len(droplets) > 0:
 			condensation.propagate(droplets)
 			condensation.updateWeights(droplets)
-			condensation.reSampling()
 			condensation.estimateState()
+			condensation.reSampling()
 
 		if len(droplets) > 0:
 
-			for particle in condensation.particles:
-				cv.Circle(particlesImg, (int(particle.x), int(particle.y)), 2, 
-										droplets[particle.myTarget()]['avgColor'], cv.CV_FILLED)
+			for col in condensation.particles:
+				for particle in col:
+					cv.Circle(particlesImg, (int(particle.x), int(particle.y)), 2, 
+											droplets[particle.myTarget]['avgColor'], cv.CV_FILLED)
 
 			for est in condensation.estimation:
 				cv.Circle(particlesImg, (int(est['x']), int(est['y'])), 5, cv.Scalar(0,0,255), cv.CV_FILLED)
