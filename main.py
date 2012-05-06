@@ -40,8 +40,8 @@ def mouseHandler(event, x, y, flags, param):
 		newDroplet = { 'morpho1' : cv.CreateStructuringElementEx( squareSide, 
 									squareSide, squareSide/2, squareSide/2, 
 									cv.CV_SHAPE_ELLIPSE),
-						'morpho2' : cv.CreateStructuringElementEx( int(squareSide/1.5), 
-									int(squareSide/1.5), int(squareSide/3), int(squareSide/3), 
+						'morpho2' : cv.CreateStructuringElementEx( int(squareSide/2), 
+									int(squareSide/2), int(squareSide/4), int(squareSide/4), 
 									cv.CV_SHAPE_ELLIPSE),
 						'avgColor': colorAvg,
 						'speed':0, 'acceleration':0, 'direction':0, 'changeDirection':0,
@@ -188,18 +188,18 @@ if __name__ == "__main__":
 
 			for current in droplets:
 				# color segmentation
-				minRange = cv.Scalar( current['avgColor'][0]-15, current['avgColor'][1]-15, 
-									current['avgColor'][2]-15 )
-				maxRange = cv.Scalar( current['avgColor'][0]+15, current['avgColor'][1]+15, 
-									current['avgColor'][2]+15 )
+				minRange = cv.Scalar( current['avgColor'][0]-10, current['avgColor'][1]-10, 
+									current['avgColor'][2]-10 )
+				maxRange = cv.Scalar( current['avgColor'][0]+10, current['avgColor'][1]+10, 
+									current['avgColor'][2]+10 )
 				colorThreshedTemp = cv.CreateImage( cv.GetSize(frame),8,1 )
 				cv.InRangeS(frame, minRange, maxRange, colorThreshedTemp)
 
 				#morpho operations to clean the results
-				cv.Dilate( colorThreshedTemp, colorThreshedTemp, current['morpho1'])
-				cv.Erode( colorThreshedTemp, colorThreshedTemp, current['morpho2'])
+				cv.Dilate( colorThreshedTemp, colorThreshedTemp, current['morpho2'])
+				#cv.Erode( colorThreshedTemp, colorThreshedTemp, current['morpho2'])
 				cv.MorphologyEx( colorThreshedTemp, colorThreshedTemp, None,
-								current['morpho1'], cv.CV_MOP_OPEN ) 
+								current['morpho1'], cv.CV_MOP_CLOSE ) 
 
 				cv.Xor(colorThreshed, colorThreshedTemp, colorThreshed)
 				cv.MorphologyEx( colorThreshed, colorThreshed, None,
@@ -211,16 +211,27 @@ if __name__ == "__main__":
 			foundDrops += len(centers)
 			del(colorThreshedTemp)
 
-			if len(centers) > 0 and foundDrops == len(droplets):
+			if foundDrops > 0 and foundDrops == len(droplets):
 
-				for i in xrange(len(centers)):
+				for i in xrange(len(droplets)):
+
+					mycenter = 0 # classic search of best one
+					nearer = 9999 #just a big number
+
+					for c in xrange(len(centers)):
+						dist = abs(np.linalg.norm( np.array(centers[c]) - 
+							np.array( [droplets[i]['lastPoint']['x'],droplets[i]['lastPoint']['y']] ) ))
+						if dist < nearer:
+							mycenter = c
+							nearer = dist
+					print nearer
 
 					# if the connected components found something we will update the avg color
 					# because the droplet probably moved somewhere else with diff light conditions
 					# this is the same as done in the mouse handler
 					frameCopy = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
 					cv.Copy(frame, frameCopy)
-					fillResult = cv.FloodFill( frameCopy, (centers[i][0],centers[i][1]), 
+					fillResult = cv.FloodFill( frameCopy, (centers[mycenter][0],centers[mycenter][1]), 
 								cv.RGB(250,0,0), cv.ScalarAll(3), cv.ScalarAll(3), 8 )
 					del(frameCopy)
 
@@ -242,39 +253,24 @@ if __name__ == "__main__":
 					colorAvg = cv.Avg(frame)
 					cv.ResetImageROI(frame)
 
-					mydrop = 0 # classic search of best one
-					nearer = 9999 #just a big number
-
-					for d in xrange(len(droplets)):
-						if droplets[d]['used'] > 0:
-							continue
-						dropColor = np.array(droplets[d]['avgColor'])
-						fillRegionColor = np.array(colorAvg)
-						dist = abs(np.mean(dropColor - fillRegionColor))
-						if dist < nearer:
-							mydrop = d
-							nearer = dist
-					droplets[mydrop]['used'] = 1
-
-
 					# calculate the kinematics
-					direction = atan2( centers[mydrop][1] - droplets[mydrop]['lastPoint']['y'],
-									centers[mydrop][0] - droplets[mydrop]['lastPoint']['x'] )
-					distance = sqrt( (centers[mydrop][0] - droplets[mydrop]['lastPoint']['x'])**2 +
-								(centers[mydrop][1] - droplets[mydrop]['lastPoint']['y'])**2 )
+					direction = atan2( centers[mycenter][1] - droplets[i]['lastPoint']['y'],
+									centers[mycenter][0] - droplets[i]['lastPoint']['x'] )
+					distance = sqrt( (centers[mycenter][0] - droplets[i]['lastPoint']['x'])**2 +
+								(centers[mycenter][1] - droplets[i]['lastPoint']['y'])**2 )
 					speed = distance / 1
 
-					cv.Line( pathImg, (droplets[mydrop]['lastPoint']['x'], droplets[mydrop]['lastPoint']['y']), 
-						(centers[mydrop][0],centers[mydrop][1]), droplets[mydrop]['avgColor'] );
+					cv.Line( pathImg, (droplets[i]['lastPoint']['x'], droplets[i]['lastPoint']['y']), 
+						(centers[mycenter][0],centers[mycenter][1]), droplets[i]['avgColor'] );
 
-					droplets[mydrop]['acceleration'] = speed - droplets[mydrop]['speed']
-					droplets[mydrop]['changeDirection'] = direction - droplets[mydrop]['direction']
-					droplets[mydrop]['speed'] = speed
-					droplets[mydrop]['direction'] = direction
-					droplets[mydrop]['lastPoint']['x'] = centers[mydrop][0]
-					droplets[mydrop]['lastPoint']['y'] = centers[mydrop][1]
+					droplets[i]['acceleration'] = speed - droplets[i]['speed']
+					droplets[i]['changeDirection'] = direction - droplets[i]['direction']
+					droplets[i]['speed'] = speed
+					droplets[i]['direction'] = direction
+					droplets[i]['lastPoint']['x'] = centers[mycenter][0]
+					droplets[i]['lastPoint']['y'] = centers[mycenter][1]
 
-					track_info[mydrop].append([ speed, droplets[mydrop]['changeDirection']])
+					track_info[i].append([ speed, droplets[i]['changeDirection']])
 
 					# # find best node in the SOM for this pair speed / change dir
 					# pos = som.FindBestMatchingNode([ float(speed) / som.dimMaxs[0], float(droplets[i]['changeDirection'])/som.dimMaxs[1]])
@@ -284,21 +280,18 @@ if __name__ == "__main__":
 					# 	(int(pos[0]*sSq+sSq), int(pos[1]*sSq+sSq)), (0, 0, 255), cv.CV_FILLED)
 
 					# update the morpho elements and the avg color
-					droplets[mydrop]['morpho1'] = cv.CreateStructuringElementEx( squareSide, 
+					droplets[i]['morpho1'] = cv.CreateStructuringElementEx( squareSide, 
 												squareSide, squareSide/2, squareSide/2, 
 												cv.CV_SHAPE_ELLIPSE)
-					droplets[mydrop]['morpho2'] = cv.CreateStructuringElementEx( int(squareSide/1.5), 
-												int(squareSide/1.5), int(squareSide/3), int(squareSide/3), 
+					droplets[i]['morpho2'] = cv.CreateStructuringElementEx( int(squareSide/2), 
+												int(squareSide/2), int(squareSide/4), int(squareSide/4), 
 												cv.CV_SHAPE_ELLIPSE)
-					droplets[mydrop]['avgColor'] = colorAvg
+					droplets[i]['avgColor'] = colorAvg
 
 		
 		cv.ShowImage('video', frame)
 		cv.ShowImage('path',pathImg)
 		#cv.ShowImage('som', somImgCopy)
-
-		for droplet in droplets:
-			droplet['used'] = 0
 
 		if foundDrops == len(droplets) and len(droplets) > 0:
 			condensation.propagate(droplets)
