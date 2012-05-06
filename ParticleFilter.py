@@ -86,6 +86,7 @@ class Condensation:
 		self.numTargets+=1
 		for particle in self.particles:
 			particle.weights.append(0)
+			particle.targets.append(0)
 
 
 
@@ -95,10 +96,12 @@ class Particle:
 		self.x = inX
 		self.y = inY
 		self.weights = []
+		self.targets = []
 
 	def copy(self):
 		newParticle = Particle(self.x, self.y)
 		newParticle.weights = self.weights[:]
+		newParticle.targets = self.targets[:]
 		return newParticle
 
 	def propagate(self, propData):
@@ -114,24 +117,24 @@ class Particle:
 
 	def updateWeights(self, propData):
 
-		for i in range(len(self.weights)):
+		for i in xrange(len(self.weights)):
 			pData = propData[i]
 			self.weights[i] = 1 / sqrt( (pData['lastPoint']['x']-self.x)**2 
 								+ (pData['lastPoint']['y']-self.y)**2 )
+			self.targets[i] += self.weights[i]
 
 	def normWeight(self, sums):
 
-		for i in range(len(self.weights)):
+		for i in xrange(len(self.weights)):
 			self.weights[i] = self.weights[i] / sums[i]
 
 	def myTarget(self):
 
-		maxWeight = 0
-		maxVal = self.weights[0]
+		maxTarget = 0
+		maxVal = self.targets[0]
 
-		for i in range(1,len(self.weights)):
-			if self.weights[i] > maxVal:
-				maxWeight = i
-				maxVal = self.weights[i]
-
-		return maxWeight
+		for i in xrange(1,len(self.targets)):
+			if self.targets[i] > maxVal:
+				maxTarget = i
+				maxVal = self.targets[i]
+		return maxTarget
