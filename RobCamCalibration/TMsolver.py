@@ -19,138 +19,151 @@ import time
 import cv
 import printcore
 
-def findScale(pixels, tp):
-	
-	sx1 = abs( (pixels[0]-float(pixels[2])) / (tp[0]-tp[2]) )
-	sx2 = abs( (pixels[2]-float(pixels[4])) / (tp[2]-tp[4]) )
-	sx3 = abs( (pixels[4]-float(pixels[0])) / (tp[4]-tp[0]) )
+class TMSolver():
 
-	sy1 = abs( (pixels[1]-float(pixels[3])) / (tp[1]-tp[3]) )
-	sy2 = abs( (pixels[3]-float(pixels[5])) / (tp[3]-tp[5]) )
-	sy3 = abs( (pixels[5]-float(pixels[1])) / (tp[5]-tp[1]) )
+	def __init__(self):
 
-	return (sx1+sx2+sx3)/3., (sy1+sy2+sy3)/3.
+		self.p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+		#p.loud=True
+		time.sleep(5)
+		self.p.send_now("M43 P1 S180") #move the syringe to 50
+		time.sleep(1)
+		self.p.send_now("G28") #homing
+		time.sleep(1)
+		self.p.send_now("GM43 P0 S0") #homing
+		time.sleep(1)
+		self.p.send_now("GM43 P2 S0") #homing
+		time.sleep(1)
+		self.p.send_now("GM43 P4 S0") #homing
+		time.sleep(1)
+		self.p.send_now("GM43 P5 S0") #homing
+		time.sleep(1)
 
-def trigLinearSolver(a,b,c):
-	''' solving the linear combination of sin and cos '''
-	if a < 0:
-		a = a * -1
-		b = b * -1
-		c = c * -1
-	print a,b,c
-	u = asin( b / sqrt( a**2 + b**2 ) )
-	return asin( -c / sqrt( a**2 + b**2 ) ) - u
+		capture = cv.CaptureFromCAM(1)
+		image = cv.QueryFrame(capture)
 
-def findAlpha(pixels, tp):
-	print pixels, tp
-	# first pair
-	# solving for tx
-	a = pixels[1] - pixels[3]
-	b = -pixels[0] + pixels[2]
-	c = tp[0] - tp[2]
-	alpha1 = trigLinearSolver(a,b,c)
+		intrinsic = cv.Load("/Users/joanmanel/Documents/thesis/TrackingDrops/CamCalibration/Intrinsics.xml")
+		distortion = cv.Load("/Users/joanmanel/Documents/thesis/TrackingDrops/CamCalibration/Distortion.xml")
 
-	# solving for ty
-	a = -pixels[0] + pixels[2]
-	b = -pixels[1] + pixels[3]
-	c = tp[1]-tp[3]
-	alpha2 = trigLinearSolver(a,b,c)
+		mapx = cv.CreateImage( cv.GetSize(image), cv.IPL_DEPTH_32F, 1 );
+		mapy = cv.CreateImage( cv.GetSize(image), cv.IPL_DEPTH_32F, 1 );
+		cv.InitUndistortMap(intrinsic,distortion,mapx,mapy)
+		cv.NamedWindow( "Undistort" )
 
-	# second pair
-	# solving for tx
-	a = pixels[3] - pixels[5]
-	b = -pixels[2] + pixels[4]
-	c = tp[2] - tp[4]
-	alpha3 = trigLinearSolver(a,b,c)
+		cv.SetMouseCallback("Undistort", self.mouseHandler, 0)
 
-	# solving for ty
-	a = -pixels[2] + pixels[4]
-	b = -pixels[3] + pixels[5]
-	c = tp[3]-tp[5]
-	alpha4 = trigLinearSolver(a,b,c)
+		self.clicks = 1
+		self.tp = [242,42,252,47,261,57] # different tool positions. right now is static
+		self.pixels = []
+		self.alpha = 0 # rotation angle, to be calculated
+		self.tx = 0 # translation over x, to be calculated
+		self.ty = 0 # translation over y, to be calculated
+		self.sx = 0 # scaling factor over x
+		self.sy = 0 # scaling factor over y
 
-	return ( alpha1 + alpha2 + alpha3 + alpha4 ) / 4.0
+		self.p.send_now("G1 X242 Y42 F10000") #MOVE TO THIS POSITION
+		self.p.send_now("P4 G500") # WAIT 0.5S
+		self.p.send_now("M43 P2 S55") # MOVE SYR DOWN
 
+		while(1):
+			image=cv.QueryFrame(capture)
+			t = cv.CloneImage(image);
+			cv.Remap( t, image, mapx, mapy )
+			cv.Flip(image,image,1)
+			cv.ShowImage("Undistort", image)
+			c = cv.WaitKey(30)
+			if self.tx > 0 or self.ty > 0:		# enter 'q' key to exit
+				break 
 
-def findTMatrix( pixels, tp ):
-	'''solving the TM matrix for a pair of points, and using the linear combination of sin and cos'''
-	
-	alpha = findAlpha( pixels, tp)
-	tx1 = tp[0] -cos(alpha)*pixels[0] + sin(alpha)*pixels[1]
-	ty1 = tp[1] -sin(alpha)*pixels[0] - cos(alpha)*pixels[1]
-
-	tx2 = tp[2] -cos(alpha)*pixels[2] + sin(alpha)*pixels[3]
-	ty2 = tp[3] -sin(alpha)*pixels[2] - cos(alpha)*pixels[3]
-
-	return alpha, (tx1+tx2)/2.0, (ty1+ty2)/2.0
-
-def mouseHandler(event, x, y, flags, param):
-
-	global tp, pixels, clicks, alpha, tx, ty, sx, sy
-	global pixels
-	global clicks
-
-	if event == cv.CV_EVENT_LBUTTONDOWN:
-
-		pixels.append(x)
-		pixels.append(y)
-
-		if clicks < 3:
-			command = 'G1 X%d Y%d F10000' % ( tp[(clicks*2)], tp[(clicks*2)+1] )
-			p.send_now(command)
-			clicks = clicks + 1
-
-		elif clicks == 3:
-			sx,sy = findScale(pixels, tp)
-			pixels = [ pixels[0]/sx, pixels[1]/sy, pixels[2]/sx, pixels[3]/sy, pixels[4]/sx, pixels[5]/sy ]
-			alpha, tx, ty = findTMatrix( pixels, tp)
-			clicks = clicks +1
-		else:
-			robx = (x/sx) * cos(alpha) - (y/sy) * sin(alpha) + tx
-			roby = (x/sx) * sin(alpha) + (y/sy) * cos(alpha) + ty
-			command = 'G1 X%d Y%d F10000' % ( robx, roby )
-			p.send_now(command)
+		self.p.disconnect()
+		del(self.p)
 
 
+	def findScale(self, pixels, tp):
+		
+		sx1 = abs( (pixels[0]-float(pixels[2])) / (tp[0]-tp[2]) )
+		sx2 = abs( (pixels[2]-float(pixels[4])) / (tp[2]-tp[4]) )
+		sx3 = abs( (pixels[4]-float(pixels[0])) / (tp[4]-tp[0]) )
 
-p=printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-#p.loud=True
-time.sleep(5)
-p.send_now("M43 P1 S50") #move the syringe to 100
-time.sleep(5)
-p.send_now("G28") #homing
-time.sleep(5)
+		sy1 = abs( (pixels[1]-float(pixels[3])) / (tp[1]-tp[3]) )
+		sy2 = abs( (pixels[3]-float(pixels[5])) / (tp[3]-tp[5]) )
+		sy3 = abs( (pixels[5]-float(pixels[1])) / (tp[5]-tp[1]) )
 
-capture=cv.CaptureFromCAM(1)
-image=cv.QueryFrame(capture)
+		return (sx1+sx2+sx3)/3., (sy1+sy2+sy3)/3.
 
-intrinsic = cv.Load("Intrinsics.xml")
-distortion = cv.Load("Distortion.xml")
+	def trigLinearSolver(self, a,b,c):
+		''' solving the linear combination of sin and cos '''
+		if a < 0:
+			a = a * -1
+			b = b * -1
+			c = c * -1
+		u = asin( b / sqrt( a**2 + b**2 ) )
+		return asin( -c / sqrt( a**2 + b**2 ) ) - u
 
-mapx = cv.CreateImage( cv.GetSize(image), cv.IPL_DEPTH_32F, 1 );
-mapy = cv.CreateImage( cv.GetSize(image), cv.IPL_DEPTH_32F, 1 );
-cv.InitUndistortMap(intrinsic,distortion,mapx,mapy)
-cv.NamedWindow( "Undistort" )
+	def findAlpha(self, pixels, tp):
+		# first pair
+		# solving for tx
+		a = pixels[1] - pixels[3]
+		b = -pixels[0] + pixels[2]
+		c = tp[0] - tp[2]
+		alpha1 = self.trigLinearSolver(a,b,c)
 
-cv.SetMouseCallback("Undistort", mouseHandler, 0)
+		# solving for ty
+		a = -pixels[0] + pixels[2]
+		b = -pixels[1] + pixels[3]
+		c = tp[1]-tp[3]
+		alpha2 = self.trigLinearSolver(a,b,c)
 
-clicks = 1
-tp = [257,27,267,32,281,42] # different tool positions. right now is static
-pixels = []
-alpha = 0 # rotation angle, to be calculated
-tx = 0 # translation over x, to be calculated
-ty = 0 # translation over y, to be calculated
-sx = 0 # scaling factor over x
-sy = 0 # scaling factor over y
+		# second pair
+		# solving for tx
+		a = pixels[3] - pixels[5]
+		b = -pixels[2] + pixels[4]
+		c = tp[2] - tp[4]
+		alpha3 = self.trigLinearSolver(a,b,c)
 
-p.send_now("G1 X257 Y27 F10000")
+		# solving for ty
+		a = -pixels[2] + pixels[4]
+		b = -pixels[3] + pixels[5]
+		c = tp[3]-tp[5]
+		alpha4 = self.trigLinearSolver(a,b,c)
 
-while(1):
-	image=cv.QueryFrame(capture)
-	t = cv.CloneImage(image);
-	cv.Remap( t, image, mapx, mapy )
-	cv.Flip(image,image,1)
-	cv.ShowImage("Undistort", image)
-	c = cv.WaitKey(10)
-	if c == 'q':		# enter 'q' key to exit
-		break 
+		return ( alpha1 + alpha2 + alpha3 + alpha4 ) / 4.0
+
+
+	def findTMatrix(self, pixels, tp ):
+		'''solving the TM matrix for a pair of points, and using the linear combination of sin and cos'''
+		
+		alpha = self.findAlpha( pixels, tp)
+		tx1 = tp[0] -cos(alpha)*pixels[0] + sin(alpha)*pixels[1]
+		ty1 = tp[1] -sin(alpha)*pixels[0] - cos(alpha)*pixels[1]
+
+		tx2 = tp[2] -cos(alpha)*pixels[2] + sin(alpha)*pixels[3]
+		ty2 = tp[3] -sin(alpha)*pixels[2] - cos(alpha)*pixels[3]
+
+		return alpha, (tx1+tx2)/2.0, (ty1+ty2)/2.0
+
+	def mouseHandler(self, event, x, y, flags, param):
+
+		if event == cv.CV_EVENT_LBUTTONDOWN:
+
+			self.pixels.append(x)
+			self.pixels.append(y)
+
+			if self.clicks < 3:
+				command = 'G1 X%d Y%d F10000' % ( self.tp[(self.clicks*2)], self.tp[(self.clicks*2)+1] )
+				self.p.send_now(command)
+				self.clicks = self.clicks + 1
+
+			else: # self.clicks == 3:
+				self.sx,self.sy = self.findScale(self.pixels, self.tp)
+				self.pixels = [ self.pixels[0]/self.sx, self.pixels[1]/self.sy, self.pixels[2]/self.sx, 
+					self.pixels[3]/self.sy, self.pixels[4]/self.sx, self.pixels[5]/self.sy ]
+				self.alpha, self.tx, self.ty = self.findTMatrix( self.pixels, self.tp)
+				self.clicks = self.clicks + 1
+
+if __name__ == "__main__":
+
+	solver = TMSolver()
+	print "scaling factor sx sy ", solver.sx, solver.sy
+	print "angle ", solver.alpha
+	print "translation over x and y", solver.tx, solver.ty
