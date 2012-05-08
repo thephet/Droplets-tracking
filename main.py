@@ -80,12 +80,12 @@ def prepare_track_data(L):
 
 if __name__ == "__main__":
 
-	# p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-	# p.loud=True
-	# sleep(3)
-	# gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
-	# p.startprint(gcode)
-	# sleep(3)
+	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	#p.loud=True
+	sleep(3)
+	gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
+	p.startprint(gcode)
+	sleep(3)
 
 	cv.NamedWindow('video', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('threshold', cv.CV_WINDOW_AUTOSIZE)
@@ -93,9 +93,12 @@ if __name__ == "__main__":
 	cv.NamedWindow('particles', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('som', cv.CV_WINDOW_AUTOSIZE)
 
-	capture = cv.CreateFileCapture('Videos/droplets.mov')
-	#capture=cv.CaptureFromCAM(1) # from webcam
+	#capture = cv.CreateFileCapture('Videos/droplets.mov')
+	capture = cv.CaptureFromCAM(1) # from webcam
 	frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
+
+	newvideo = 'Videos/%d_%d_%d_%d_%d_%d.avi' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
+	video = cv.CreateVideoWriter(newvideo, cv.CV_FOURCC('D','I','V','X'), 30, cv.GetSize(param), 1)
 
 	# prepare for undistortion
 	intrinsic = cv.Load("CamCalibration/Intrinsics.xml")
@@ -133,7 +136,7 @@ if __name__ == "__main__":
 	frames = 0 # to count the number of frames
 	track_info = [] # a list to place position, speed, change of direction... of droplets over time
 
-	num_particles = 100
+	num_particles = 50
 	condensation = pf.Condensation(num_particles, 0, 0, frame.width, frame.height)
 
 	# # to display the som
@@ -166,6 +169,8 @@ if __name__ == "__main__":
 		if pause == 1:
 			frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
 			if not frame: break
+			if len(droplets) > 0:
+				cv.WriteFrame(video, frame)
 			t = cv.CloneImage(frame)
 			cv.Remap( t, frame, mapx, mapy )
 			cv.Flip(frame, frame, 1)
@@ -224,7 +229,6 @@ if __name__ == "__main__":
 						if dist < nearer:
 							mycenter = c
 							nearer = dist
-					print nearer
 
 					# if the connected components found something we will update the avg color
 					# because the droplet probably moved somewhere else with diff light conditions
@@ -324,17 +328,18 @@ if __name__ == "__main__":
 	newfile = 'Som/data/%d_%d_%d_%d_%d_%d.txt' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
 	f = open(newfile, 'w')
 	pickle.dump(track_info[0] ,f)
+	f.close()
 
 	del(capture)
 	del(frame)
 	del(colorThreshed)
 	del(pathImg)
 	del(particlesImg)
+	del(video)
 	#del(somImg)
 	#del(somImgCopy)
 	cv.DestroyWindow('video')
 	cv.DestroyWindow('particles')
 	cv.DestroyWindow('path')
 	cv.DestroyWindow('threshold')
-	#cv.DestroyWindow('som')
-
+	cv.DestroyWindow('som')
