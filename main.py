@@ -80,12 +80,12 @@ def prepare_track_data(L):
 
 if __name__ == "__main__":
 
-	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-	#p.loud=True
-	sleep(3)
-	gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
-	p.startprint(gcode)
-	sleep(3)
+	# p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	# #p.loud=True
+	# sleep(3)
+	# gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
+	# p.startprint(gcode)
+	# sleep(3)
 
 	cv.NamedWindow('video', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('threshold', cv.CV_WINDOW_AUTOSIZE)
@@ -93,12 +93,12 @@ if __name__ == "__main__":
 	cv.NamedWindow('particles', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('som', cv.CV_WINDOW_AUTOSIZE)
 
-	#capture = cv.CreateFileCapture('Videos/droplets.mov')
-	capture = cv.CaptureFromCAM(1) # from webcam
+	capture = cv.CreateFileCapture('Videos/droplets.mov')
+	#capture = cv.CaptureFromCAM(1) # from webcam
 	frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
 
 	newvideo = 'Videos/%d_%d_%d_%d_%d_%d.avi' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
-	video = cv.CreateVideoWriter(newvideo, cv.CV_FOURCC('D','I','V','X'), 30, cv.GetSize(param), 1)
+	video = cv.CreateVideoWriter(newvideo, cv.CV_FOURCC('D','I','V','X'), 30, cv.GetSize(frame), 1)
 
 	# prepare for undistortion
 	intrinsic = cv.Load("CamCalibration/Intrinsics.xml")

@@ -21,15 +21,14 @@ import printcore
 
 class TMSolver():
 
-	def __init__(self):
+	def __init__(self, p):
 
-		self.p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-		#p.loud=True
-		time.sleep(5)
-		self.p.send_now("M43 P1 S180") #move the syringe to 50
-		time.sleep(1)
+		self.p = p
+		time.sleep(3)
+		self.p.send_now("M43 P1 S180") #move the syringe to 180
+		time.sleep(3)
 		self.p.send_now("G28") #homing
-		time.sleep(1)
+		time.sleep(2)
 		self.p.send_now("GM43 P0 S0") #homing
 		time.sleep(1)
 		self.p.send_now("GM43 P2 S0") #homing
@@ -53,7 +52,7 @@ class TMSolver():
 		cv.SetMouseCallback("Undistort", self.mouseHandler, 0)
 
 		self.clicks = 1
-		self.tp = [242,42,252,47,261,57] # different tool positions. right now is static
+		self.tp = [245,43,252,49,261,57] # different tool positions. right now is static
 		self.pixels = []
 		self.alpha = 0 # rotation angle, to be calculated
 		self.tx = 0 # translation over x, to be calculated
@@ -61,7 +60,7 @@ class TMSolver():
 		self.sx = 0 # scaling factor over x
 		self.sy = 0 # scaling factor over y
 
-		self.p.send_now("G1 X242 Y42 F10000") #MOVE TO THIS POSITION
+		self.p.send_now("G1 X245 Y43 F10000") #MOVE TO THIS POSITION
 		self.p.send_now("P4 G500") # WAIT 0.5S
 		self.p.send_now("M43 P2 S55") # MOVE SYR DOWN
 
@@ -75,8 +74,12 @@ class TMSolver():
 			if self.tx > 0 or self.ty > 0:		# enter 'q' key to exit
 				break 
 
-		self.p.disconnect()
-		del(self.p)
+		self.p.send_now("M43 P2 S0")
+		cv.DestroyWindow('Undistort')
+		del(mapx)
+		del(mapy)
+		del(image)
+		del(capture)
 
 
 	def findScale(self, pixels, tp):
@@ -163,7 +166,12 @@ class TMSolver():
 
 if __name__ == "__main__":
 
-	solver = TMSolver()
+	sleep(3)
+	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	sleep(3)
+	#p.loud=True
+
+	solver = TMSolver(p)
 	print "scaling factor sx sy ", solver.sx, solver.sy
 	print "angle ", solver.alpha
 	print "translation over x and y", solver.tx, solver.ty

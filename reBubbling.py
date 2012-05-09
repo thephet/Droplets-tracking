@@ -1,8 +1,10 @@
 import cv # opencv
 import printcore # this controls the robot
 from time import time, sleep, localtime
-from math import atan2, sqrt
+from math import atan2, sqrt, sin, cos
 import numpy as np
+
+import RobCamCalibration.TMsolver as tm
 
 
 def mouseHandler(event, x, y, flags, param):
@@ -68,10 +70,18 @@ def find_connected_components(img):
 
 if __name__ == "__main__":
 
-	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-	#p.loud=True
 	sleep(3)
-	gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
+	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	sleep(3)
+	p.loud=True
+
+	# first find the calibration between camera and robot
+	calibration = tm.TMSolver(p)
+	print "scaling factor sx sy ", calibration.sx, calibration.sy
+	print "angle ", calibration.alpha
+	print "translation over x and y", calibration.tx, calibration.ty
+
+	gcode = [ i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" ) ]
 	p.startprint(gcode)
 	sleep(3)
 
@@ -100,12 +110,12 @@ if __name__ == "__main__":
 	FPS = 30 # somehow the previous line returns 0 for cams. 30 is the default
 	frame_period = 1.0 / FPS
 
-
 	cv.SetMouseCallback('video', mouseHandler, frame)
 
 	droplets = [] # this will hold all the droplets found
 	frames = 0 # to count the number of frames
 
+	rebubbling = 0
 	while(1):
 
 		time_start = time()
@@ -163,6 +173,26 @@ if __name__ == "__main__":
 
 			if foundDrops > 0 and foundDrops == len(droplets):
 
+				# rebubble
+				# this just loads the oil and places and the syringe over the dish at height 55
+				# which is tip inside the water
+				print rebubbling
+				if (rebubbling == 10):
+					gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/rebubble.gcode" )]
+
+					robx = (centers[0][0]/calibration.sx) * cos(calibration.alpha) - (centers[0][1]/calibration.sy) * sin(calibration.alpha) + calibration.tx	
+					roby = (centers[0][0]/calibration.sx) * sin(calibration.alpha) + (centers[0][1]/calibration.sy) * cos(calibration.alpha) + calibration.ty
+					print "robot goes here:", robx, roby
+					command = 'G1 X%f Y%f F8000' % ( robx, roby )
+					insertion = [command, 'G4 P500', 'M43 P2 S55', 'G4 P500', 'M43 P3 S180', 'G4 P500', 'M43 P2 S0', 'G4 P500', 'G1 X183 Y92', 'G4 P500']
+					sleep(3)
+					p.startprint(gcode+insertion)
+					sleep(3)
+					print "hola"
+					rebubbling = 1
+					print "adios"
+				rebubbling = rebubbling + 1
+
 				for i in xrange(len(droplets)):
 
 					mycenter = 0 # classic search of best one
@@ -207,10 +237,7 @@ if __name__ == "__main__":
 									centers[mycenter][0] - droplets[i]['lastPoint']['x'] )
 					distance = sqrt( (centers[mycenter][0] - droplets[i]['lastPoint']['x'])**2 +
 								(centers[mycenter][1] - droplets[i]['lastPoint']['y'])**2 )
-					speed = distance / 1
-
-					cv.Line( pathImg, (droplets[i]['lastPoint']['x'], droplets[i]['lastPoint']['y']), 
-						(centers[mycenter][0],centers[mycenter][1]), droplets[i]['avgColor'] );
+					speed = distance / 1.0
 
 					droplets[i]['acceleration'] = speed - droplets[i]['speed']
 					droplets[i]['changeDirection'] = direction - droplets[i]['direction']
@@ -218,8 +245,6 @@ if __name__ == "__main__":
 					droplets[i]['direction'] = direction
 					droplets[i]['lastPoint']['x'] = centers[mycenter][0]
 					droplets[i]['lastPoint']['y'] = centers[mycenter][1]
-
-					track_info[i].append([ speed, droplets[i]['changeDirection']])
 
 					# update the morpho elements and the avg color
 					droplets[i]['morpho1'] = cv.CreateStructuringElementEx( squareSide, 
@@ -246,3 +271,5 @@ if __name__ == "__main__":
 	del(colorThreshed)
 	cv.DestroyWindow('video')
 	cv.DestroyWindow('threshold')
+	p.disconnect()
+	del(p)
