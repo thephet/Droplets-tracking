@@ -70,7 +70,7 @@ class TMSolver():
 			cv.Remap( t, image, mapx, mapy )
 			cv.Flip(image,image,1)
 			cv.ShowImage("Undistort", image)
-			c = cv.WaitKey(30)
+			c = cv.WaitKey(10)
 			if self.tx > 0 or self.ty > 0:		# enter 'q' key to exit
 				break 
 
@@ -155,6 +155,7 @@ class TMSolver():
 			if self.clicks < 3:
 				command = 'G1 X%d Y%d F10000' % ( self.tp[(self.clicks*2)], self.tp[(self.clicks*2)+1] )
 				self.p.send_now(command)
+				time.sleep(1)
 				self.clicks = self.clicks + 1
 
 			else: # self.clicks == 3:

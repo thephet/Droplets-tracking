@@ -1,3 +1,14 @@
+'''
+at first the TMsolver is used to calibrate the robot and the camera, that requires 3 clicks from the user.
+then a droplet and water are placed on a click, and the system waits for the user to click a droplet to track.
+once a droplet has been selected, the system tracks it, and waits some time while the droplet moves.
+it is supposed to wait 10s, but my system is slow and cannot keep the pace, so it goes for like 30s.
+Finally, the system loads another protocell and inserts it in the old one.
+
+this script must be executed from ../ because it depends on SOM and I dont want to set the env var
+but you can do it to execute this script from .
+'''
+
 import cv # opencv
 import printcore # this controls the robot
 from time import time, sleep, localtime
@@ -184,7 +195,7 @@ if __name__ == "__main__":
 					roby = (centers[0][0]/calibration.sx) * sin(calibration.alpha) + (centers[0][1]/calibration.sy) * cos(calibration.alpha) + calibration.ty
 					print "robot goes here:", robx, roby
 					command = 'G1 X%f Y%f F8000' % ( robx, roby )
-					insertion = [command, 'G4 P500', 'M43 P2 S55', 'G4 P500', 'M43 P3 S180', 'G4 P500', 'M43 P2 S0', 'G4 P500', 'G1 X183 Y92', 'G4 P500']
+					insertion = [command, 'G4 P500', 'M43 P3 S169', 'G4 P500', 'M43 P2 S55', 'G4 P500', 'M43 P3 S180', 'G4 P500', 'M43 P2 S0', 'G4 P500', 'G1 X183 Y92', 'G4 P500']
 					sleep(3)
 					p.startprint(gcode+insertion)
 					sleep(3)
