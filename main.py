@@ -73,12 +73,12 @@ def find_connected_components(img):
 
 if __name__ == "__main__":
 
-	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-	#p.loud=True
-	sleep(3)
-	gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
-	p.startprint(gcode)
-	sleep(3)
+	# p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	# #p.loud=True
+	# sleep(3)
+	# gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
+	# p.startprint(gcode)
+	# sleep(3)
 
 	cv.NamedWindow('video', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('threshold', cv.CV_WINDOW_AUTOSIZE)
@@ -86,8 +86,8 @@ if __name__ == "__main__":
 	#cv.NamedWindow('particles', cv.CV_WINDOW_AUTOSIZE)
 	#cv.NamedWindow('som', cv.CV_WINDOW_AUTOSIZE)
 
-	#capture = cv.CreateFileCapture('Videos/droplets.mov')
-	capture = cv.CaptureFromCAM(1) # from webcam
+	capture = cv.CreateFileCapture('Videos/droplets.mov')
+	#capture = cv.CaptureFromCAM(1) # from webcam
 	frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
 
 	newvideo = 'Videos/%d_%d_%d_%d_%d_%d.avi' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
@@ -161,9 +161,9 @@ if __name__ == "__main__":
 		if pause == 1:
 			frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
 			if not frame: break
-			t = cv.CloneImage(frame)
-			cv.Remap( t, frame, mapx, mapy )
-			cv.Flip(frame, frame, 1)
+			#t = cv.CloneImage(frame)
+			#cv.Remap( t, frame, mapx, mapy )
+			#cv.Flip(frame, frame, 1)
 			#cv.Copy(frame, particlesImg)
 			if len(droplets) > 0:
 				cv.WriteFrame(video, frame)
@@ -309,6 +309,8 @@ if __name__ == "__main__":
 
 		time_end = time()
 		cycle_time = time_end - time_start
+		if frames == 0:
+			print cycle_time
 		delay = frame_period - cycle_time
 
 		if delay < 0: delay = 0

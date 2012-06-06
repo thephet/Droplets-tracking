@@ -108,8 +108,8 @@ def load(filename):
 
 if __name__ == "__main__":
 
-	sideSize = 10
-	iterations = 30
+	sideSize = 200
+	iterations = 1
 	dimensions = 2
 	learningRate = 0.05
 
@@ -117,16 +117,17 @@ if __name__ == "__main__":
 
 	testsom = Som(sideSize, iterations, dimensions, learningRate)
 
-	# training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
-	# som.train(np.array( training_data ))
-	#f = open('data/2012_5_3_12_55_39.txt', 'r') #droplets.mov blue droplet
-	#x = pickle.load(f)
-	#f = open('data/2012_5_3_12_33_10.txt', 'r') #droplets.mov red droplet
-	#y = pickle.load(f)
-	f = open('data/2012_5_3_19_5_37.txt','r')
+	#training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
+	#som.train(np.array( training_data ))
+	f = open('data/2012_5_3_12_55_39.txt', 'r') #droplets.mov blue droplet
 	x = pickle.load(f)
-	testsom.train(np.array(x))
-	testsom.save("data/som.dat")
+	f = open('data/2012_5_3_12_33_10.txt', 'r') #droplets.mov red droplet
+	y = pickle.load(f)
+	#f = open('data/2012_5_3_19_5_37.txt','r')
+	#x = pickle.load(f)
+	print len(x+y)
+	testsom.train(np.array(x+y))
+	#testsom.save("data/som.dat")
 
 	results = cv.CreateImage( (500, 500), 8, 3)
 	sideSquare = 500/sideSize
