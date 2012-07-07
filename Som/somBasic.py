@@ -8,6 +8,7 @@ from sys import maxint
 from time import time
 import cv
 import pickle
+import numpy as np
 
 class Node:
 
@@ -65,7 +66,11 @@ class Som:
 
 		return winner
 
-	def train(self, training_data):
+	def train(self, td):
+
+		L = [ [ abs(item) for item in row] for row in td ] #abs the array
+		self.dimMaxs = [ max(row[column] for row in L) for column in xrange(len(L[0])) ] #find max for each col
+		training_data = np.array([ [row[i] / self.dimMaxs[i] for i in xrange(len(row))] for row in L]) #normalize
 
 		learningRate = self.learningRate
 
@@ -107,19 +112,22 @@ class Som:
 
 if __name__ == "__main__":
 
-	sideSize = 50
-	iterations = 20
-	dimensions = 3
+	sideSize = 200
+	iterations = 5
+	dimensions = 2
 	learningRate = 0.05
 
 	time_start = time()
 
 	som = Som(sideSize, iterations, dimensions, learningRate)
 
-	training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
-	f = open('trackNorm.txt', 'r')
+	#training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
+	f = open('data/2012_5_3_12_55_39.txt', 'r') #droplets.mov blue droplet
 	x = pickle.load(f)
-	som.train(x)
+	f = open('data/2012_5_3_12_33_10.txt', 'r') #droplets.mov red droplet
+	y = pickle.load(f)
+	print len(x+y)
+	som.train((x+y))
 
 	results = cv.CreateImage( (500, 500), 8, 3)
 	sideSquare = 500/sideSize
@@ -128,7 +136,7 @@ if __name__ == "__main__":
 			cv.Rectangle(results, (int(i*sideSquare), int(j*sideSquare)), (int(i*sideSquare+sideSquare), int(j*sideSquare+sideSquare)), 
 				(som.nodes[i*sideSize+j].weights[0]*255, 
 				som.nodes[i*sideSize+j].weights[1]*255, 
-				som.nodes[i*sideSize+j].weights[2]*255), 
+				0), 
 				cv.CV_FILLED)
 	
 	cv.NamedWindow('results', cv.CV_WINDOW_AUTOSIZE)

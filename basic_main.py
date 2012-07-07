@@ -1,12 +1,11 @@
 import cv # opencv
 import printcore # this controls the robot
 from time import time, sleep, localtime
-from math import atan2, sqrt
+from math import atan2, sqrt, sin, cos
 import pickle
 import numpy as np
 
-import ParticleFilter as pf
-import Som.som as Som
+import RobCamCalibration.TMsolver as tm
 
 
 def mouseHandler(event, x, y, flags, param):
@@ -18,7 +17,7 @@ def mouseHandler(event, x, y, flags, param):
 		cv.Copy(param, frameCopy)
 		fillResult = cv.FloodFill(frameCopy, (x,y), 
 								cv.RGB(250,0,0), 
-								cv.ScalarAll(2), cv.ScalarAll(2), 8 )
+								cv.ScalarAll(3), cv.ScalarAll(3), 8 )
 		del(frameCopy)
 
 		# generate 2 struct element for morpho operations
@@ -37,8 +36,8 @@ def mouseHandler(event, x, y, flags, param):
 		cv.ResetImageROI(param)
 
 		# generate the new found droplet
-		newDroplet = { 'morpho1' : cv.CreateStructuringElementEx( squareSide, 
-									squareSide, squareSide/2, squareSide/2, 
+		newDroplet = { 'morpho1' : cv.CreateStructuringElementEx( int(squareSide), 
+									int(squareSide), int(squareSide/2), int(squareSide/2), 
 									cv.CV_SHAPE_ELLIPSE),
 						'morpho2' : cv.CreateStructuringElementEx( int(squareSide/2), 
 									int(squareSide/2), int(squareSide/4), int(squareSide/4), 
@@ -61,11 +60,22 @@ def find_connected_components(img):
 	contour = cv.FindContours(img, storage, cv.CV_RETR_CCOMP, cv.CV_CHAIN_APPROX_SIMPLE)
 	centers = []
 
+	# only returns the biggest one... because there is some noise in the handling
+	# and small bubbles that we want to ignore and I cannot delete them
+	# with morpho operations
+	biggest_area = 0
 	while contour:
 		# Approximates rectangles
 		bound_rect = cv.BoundingRect(list(contour))
-		centers.append( (bound_rect[0] + bound_rect[2] / 2, 
-						bound_rect[1] + bound_rect[3] / 2) )
+		area = bound_rect[2] * bound_rect[3]
+		if (area > biggest_area):
+			centers = []
+			centers.append( 
+				(int(bound_rect[0] + (bound_rect[2] / 2.0)), 
+				int(bound_rect[1] + (bound_rect[3] / 2.0)))
+				)
+			biggest_area = area
+
 		contour = contour.h_next()
 
 	return centers
@@ -73,25 +83,25 @@ def find_connected_components(img):
 
 if __name__ == "__main__":
 
-	# p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
-	# #p.loud=True
-	# sleep(3)
-	# gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
-	# p.startprint(gcode)
-	# sleep(3)
+	p = printcore.printcore("/dev/tty.usbserial-A4008eY6",115200)
+	#p.loud=True
+	sleep(3)
+	calibration = tm.TMSolver(p)
+	gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/water_and_oil.gcode" )]
+	p.startprint(gcode)
+	sleep(3)
 
 	cv.NamedWindow('video', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('threshold', cv.CV_WINDOW_AUTOSIZE)
 	cv.NamedWindow('path', cv.CV_WINDOW_AUTOSIZE)
-	#cv.NamedWindow('particles', cv.CV_WINDOW_AUTOSIZE)
-	#cv.NamedWindow('som', cv.CV_WINDOW_AUTOSIZE)
 
-	capture = cv.CreateFileCapture('Videos/droplets.mov')
-	#capture = cv.CaptureFromCAM(1) # from webcam
+	capture = cv.CaptureFromCAM(1) # from webcam
 	frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
 
-	newvideo = 'Videos/%d_%d_%d_%d_%d_%d.avi' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
+	newvideo = 'Videos/%d.%d.%d-%d:%d:%d.avi' % (localtime()[2],localtime()[1],localtime()[0],localtime()[3],localtime()[4],localtime()[5])
 	video = cv.CreateVideoWriter(newvideo, cv.CV_FOURCC('D','I','V','X'), 30, cv.GetSize(frame), 1)
+
+	newfile = 'Som/data/%d.%d.%d-%d:%d:%d.txt' % (localtime()[2],localtime()[1],localtime()[0],localtime()[3],localtime()[4],localtime()[5])
 
 	# prepare for undistortion
 	intrinsic = cv.Load("CamCalibration/Intrinsics.xml")
@@ -103,15 +113,8 @@ if __name__ == "__main__":
 	cv.Remap( t, frame, mapx, mapy ) # undistort
 	cv.Flip(frame, frame, 1) # flip around x because the webcam is like a mirror
 
-	#s1,s2 = cv.GetSize(frameOriginal)
-	#frame = cv.CreateImage( (s1/2,s2/2), frameOriginal.depth, frameOriginal.channels)
-	#cv.PyrDown(frameOriginal,frame) #half size because otherwise I cannot see everything in my 13 screen
-
 	# to store the results from the color seg
 	colorThreshed = cv.CreateImage(cv.GetSize(frame), 8, 1)
-
-	# to show the particles
-	#particlesImg = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
 
 	#to show the path
 	pathImg = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
@@ -128,24 +131,8 @@ if __name__ == "__main__":
 	frames = 0 # to count the number of frames
 	track_info = [] # a list to place position, speed, change of direction... of droplets over time
 
-	#num_particles = 50
-	#condensation = pf.Condensation(num_particles, 0, 0, frame.width, frame.height)
-
-	# # to display the som
-	# somImg = cv.CreateImage( (500, 500), 8, 3)
-	# # to display online results, display and clear every time to just show the last
-	# somImgCopy = cv.CreateImage( (500, 500), 8, 3)
-	# som = Som.load('Som/data/som.dat')
-	# sideSquare = 500/som.cellsSide
-
-	# for i in xrange(som.cellsSide):
-	# 	for j in xrange(som.cellsSide):
-	# 		print (som.nodes[i,j,0]*255, som.nodes[i,j,1]*255, 0)
-	# 		cv.Rectangle(somImg, (int(i*sideSquare), int(j*sideSquare)), 
-	# 			(int(i*sideSquare+sideSquare), int(j*sideSquare+sideSquare)), 
-	# 			(som.nodes[i,j,0]*255, som.nodes[i,j,1]*255, 0), 
-	# 			cv.CV_FILLED)
-
+	rebubbling = 0 #when this is 10, it will do the rebubbling condition
+	removed = 1 #set to 1 when a droplet inside oil is removed
 	while(1):
 
 		time_start = time()
@@ -161,10 +148,9 @@ if __name__ == "__main__":
 		if pause == 1:
 			frame  = cv.QueryFrame(capture) # grab 1 frame to init everything
 			if not frame: break
-			#t = cv.CloneImage(frame)
-			#cv.Remap( t, frame, mapx, mapy )
-			#cv.Flip(frame, frame, 1)
-			#cv.Copy(frame, particlesImg)
+			t = cv.CloneImage(frame)
+			cv.Remap( t, frame, mapx, mapy )
+			cv.Flip(frame, frame, 1)
 			if len(droplets) > 0:
 				cv.WriteFrame(video, frame)
 
@@ -172,10 +158,6 @@ if __name__ == "__main__":
 		# we will do something every s if we checked frames == 0
 		if frames > FPS: 
 			frames = 0
-
-		# we need to check that the number of targets being followed is known by the p filter
-		#while condensation.numTargets < len(droplets):
-		#	condensation.addTarget()
 
 		foundDrops = 0
 		if frames == 0 and pause == 1 and len(droplets) > 0:
@@ -185,22 +167,22 @@ if __name__ == "__main__":
 
 			for current in droplets:
 				# color segmentation
-				minRange = cv.Scalar( current['avgColor'][0]-8, current['avgColor'][1]-8, 
-									current['avgColor'][2]-8 )
-				maxRange = cv.Scalar( current['avgColor'][0]+8, current['avgColor'][1]+8, 
-									current['avgColor'][2]+8 )
+				minRange = cv.Scalar( current['avgColor'][0]-10, current['avgColor'][1]-10, 
+									current['avgColor'][2]-10 )
+				maxRange = cv.Scalar( current['avgColor'][0]+10, current['avgColor'][1]+10, 
+									current['avgColor'][2]+10 )
 				colorThreshedTemp = cv.CreateImage( cv.GetSize(frame),8,1 )
 				cv.InRangeS(frame, minRange, maxRange, colorThreshedTemp)
 
-				#morpho operations to clean the results
-				cv.Dilate( colorThreshedTemp, colorThreshedTemp, current['morpho2'])
-				#cv.Erode( colorThreshedTemp, colorThreshedTemp, current['morpho2'])
+				# morpho operations to clean the results
+				# cv.Erode( colorThreshedTemp, colorThreshedTemp, current['morpho2'])
+				cv.Dilate( colorThreshedTemp, colorThreshedTemp, current['morpho1'])
 				cv.MorphologyEx( colorThreshedTemp, colorThreshedTemp, None,
-								current['morpho1'], cv.CV_MOP_CLOSE ) 
+								current['morpho2'], cv.CV_MOP_CLOSE ) 
 
 				cv.Xor(colorThreshed, colorThreshedTemp, colorThreshed)
 				cv.MorphologyEx( colorThreshed, colorThreshed, None,
-								current['morpho1'], cv.CV_MOP_OPEN )
+								current['morpho2'], cv.CV_MOP_OPEN )
 
 			cv.ShowImage('threshold', colorThreshed)
 
@@ -209,6 +191,29 @@ if __name__ == "__main__":
 			del(colorThreshedTemp)
 
 			if foundDrops > 0 and foundDrops == len(droplets):
+
+				# rebubble
+				# this just loads the oil and places and the syringe over the dish at height 55
+				# which is tip inside the water
+				print rebubbling
+				if (rebubbling == 9):
+
+					gcode = [i.replace("\n","") for i in open( "/Users/joanmanel/Documents/thesis/gcode/first droplets/rebubble.gcode" )]
+					robx = (centers[0][0]/calibration.sx) * cos(calibration.alpha) - (centers[0][1]/calibration.sy) * sin(calibration.alpha) + calibration.tx	
+					roby = (centers[0][0]/calibration.sx) * sin(calibration.alpha) + (centers[0][1]/calibration.sy) * cos(calibration.alpha) + calibration.ty
+					print "robot goes here:", robx, roby
+					command = 'G1 X%f Y%f F10000' % ( robx-0.5, roby )
+					insertion = [command, 'G4 P500', 'M43 P2 S30','G4 P300','M43 P2 S45','G4 P300', 'M43 P3 S169','G4 P300','M43 P2 S62', 'G4 P500', 'M43 P3 S180', 'G4 P1000', 'M43 P2 S0', 'G4 P500', 'G1 X183 Y92', 'G4 P500']
+					absortion = ['G4 P3000', command, 'G4 P500', 'M43 P3 S180', 'G4 P500', 'M43 P2 S62', 'G4 P1000', 'M43 P3 S168', 'G4 P1000', 'M43 P2 S0', 'G4 P500', 'G1 X183 Y92', 'G4 P500', 'M43 P3 S180']
+					if removed == 0:
+						p.startprint(absortion)
+						sleep(3)
+						removed = 1
+					else:
+						p.startprint(gcode+insertion)
+						sleep(3)
+						removed = 0
+					rebubbling = 0
 
 				for i in xrange(len(droplets)):
 
@@ -228,7 +233,7 @@ if __name__ == "__main__":
 					frameCopy = cv.CreateImage(cv.GetSize(frame), frame.depth, frame.channels)
 					cv.Copy(frame, frameCopy)
 					fillResult = cv.FloodFill( frameCopy, (centers[mycenter][0],centers[mycenter][1]), 
-								cv.RGB(250,0,0), cv.ScalarAll(2), cv.ScalarAll(2), 8 )
+								cv.RGB(250,0,0), cv.ScalarAll(3), cv.ScalarAll(3), 8 )
 					del(frameCopy)
 
 					# generate 2 struct element for morpho operations
@@ -256,6 +261,11 @@ if __name__ == "__main__":
 								(centers[mycenter][1] - droplets[i]['lastPoint']['y'])**2 )
 					speed = distance / 1
 
+					if speed < 3:
+						rebubbling += 1
+					else:
+						rebubbling = 0
+
 					cv.Line( pathImg, (droplets[i]['lastPoint']['x'], droplets[i]['lastPoint']['y']), 
 						(centers[mycenter][0],centers[mycenter][1]), droplets[i]['avgColor'] );
 
@@ -267,13 +277,7 @@ if __name__ == "__main__":
 					droplets[i]['lastPoint']['y'] = centers[mycenter][1]
 
 					track_info[i].append([ droplets[i]['lastPoint']['x'],droplets[i]['lastPoint']['y'],speed, droplets[i]['changeDirection']])
-
-					# # find best node in the SOM for this pair speed / change dir
-					# pos = som.FindBestMatchingNode([ float(speed) / som.dimMaxs[0], float(droplets[i]['changeDirection'])/som.dimMaxs[1]])
-					# sSq = 500 / som.cellsSide
-					# cv.Copy(somImg, somImgCopy)
-					# cv.Rectangle(somImgCopy, (int(pos[0]*sSq), int(pos[1]*sSq)), 
-					# 	(int(pos[0]*sSq+sSq), int(pos[1]*sSq+sSq)), (0, 0, 255), cv.CV_FILLED)
+					print speed, droplets[i]['changeDirection']
 
 					# update the morpho elements and the avg color
 					droplets[i]['morpho1'] = cv.CreateStructuringElementEx( squareSide, 
@@ -284,33 +288,11 @@ if __name__ == "__main__":
 												cv.CV_SHAPE_ELLIPSE)
 					droplets[i]['avgColor'] = colorAvg
 
-		
 		cv.ShowImage('video', frame)
 		cv.ShowImage('path',pathImg)
-		#cv.ShowImage('som', somImgCopy)
-
-		# if foundDrops == len(droplets) and len(droplets) > 0:
-		# 	condensation.propagate(droplets)
-		# 	condensation.updateWeights(droplets)
-		# 	condensation.estimateState()
-		# 	condensation.reSampling()
-
-		# if len(droplets) > 0:
-
-		# 	for col in condensation.particles:
-		# 		for particle in col:
-		# 			cv.Circle(particlesImg, (int(particle.x), int(particle.y)), 2, 
-		# 									droplets[particle.myTarget]['avgColor'], cv.CV_FILLED)
-
-		# 	for est in condensation.estimation:
-		# 		cv.Circle(particlesImg, (int(est['x']), int(est['y'])), 5, cv.Scalar(0,0,255), cv.CV_FILLED)
-
-		# cv.ShowImage('particles', particlesImg)
 
 		time_end = time()
 		cycle_time = time_end - time_start
-		if frames == 0:
-			print cycle_time
 		delay = frame_period - cycle_time
 
 		if delay < 0: delay = 0
@@ -318,7 +300,6 @@ if __name__ == "__main__":
 
 		key = cv.WaitKey( int(delay*1000)+1 )
 
-	#L = prepare_track_data(track_info[0])
 	newfile = 'Som/data/%d_%d_%d_%d_%d_%d.txt' % (localtime()[0],localtime()[1],localtime()[2],localtime()[3],localtime()[4],localtime()[5])
 	f = open(newfile, 'w')
 	pickle.dump(track_info[0] ,f)
@@ -328,12 +309,7 @@ if __name__ == "__main__":
 	del(frame)
 	del(colorThreshed)
 	del(pathImg)
-	#del(particlesImg)
 	del(video)
-	#del(somImg)
-	#del(somImgCopy)
 	cv.DestroyWindow('video')
-	#cv.DestroyWindow('particles')
 	cv.DestroyWindow('path')
 	cv.DestroyWindow('threshold')
-	cv.DestroyWindow('som')

@@ -29,6 +29,13 @@ class Som:
 		# used in the calculation of the neighbourhood width of m_dInfluence
 		self.timeConstant = numIts / log(self.mapRadius)
 
+	def save(self, filename):
+		''' this function only saves self.nodes, which is the big structure. 
+		All the other class attributes aren't saved '''
+		toSave = {'numIts':self.numIts, 'cellsSide':self.cellsSide, 'learningRate':self.learningRate, 'nodes':self.nodes, 'dimMaxs':self.dimMaxs}
+		f = open(filename, 'wb')
+		pickle.dump(toSave, f)
+
 	def FindBestMatchingNode(self, data):
 		'''this function presents an input vector to each node in the network
 	  		and calculates the Euclidean distance between the vectors for each
@@ -41,8 +48,12 @@ class Som:
 
   		return (i,j)
 
-	def train(self, training_data):
+	def train(self, td):
 
+		# the training data needs to be normalized
+		L = [ [ abs(item) for item in row] for row in td ] #abs the array
+		self.dimMaxs = [ max(row[column] for row in L) for column in xrange(len(L[0])) ] #find max for each col
+		training_data = np.array([ [row[i] / self.dimMaxs[i] for i in xrange(len(row))] for row in L]) #normalize
 		learningRate = self.learningRate
 
 		for it in xrange(self.numIts):
@@ -78,37 +89,56 @@ class Som:
 				distToNodeSq = np.array([[ [learningRate*exp(-((wini - i)**2 + (winj-j)**2)/(2*widthSq))] 
 					for i in xrange(int(down-up))] 
 					for j in xrange(int(right-left))])
-				#update every node based on the weithed distance array
+				#update every node based on the weithed distance array, numpy operation kind of matlab
 				subnodes += distToNodeSq*(data-subnodes)
 
 			learningRate = self.learningRate * exp( -(it+1) / self.numIts)
 
+def load(filename):
+	
+	f = open(filename, 'rb')
+	toLoad = pickle.load(f)
+
+	newSom = Som( toLoad['cellsSide'], toLoad['numIts'], 0, toLoad['learningRate'])
+	newSom.nodes = toLoad['nodes']
+	newSom.dimMaxs = toLoad['dimMaxs']
+
+	return newSom
+
 
 if __name__ == "__main__":
 
-	sideSize = 50
-	iterations = 500
-	dimensions = 3
+	sideSize = 200
+	iterations = 1
+	dimensions = 2
 	learningRate = 0.05
 
 	time_start = time()
 
-	som = Som(sideSize, iterations, dimensions, learningRate)
+	testsom = Som(sideSize, iterations, dimensions, learningRate)
 
-	training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
-	#f = open('trackNorm.txt', 'r')
+	#training_data = [ [1,0,0], [0,1,0], [0,0.5,0.25], [0,0,1], [0,0,0.5], [1,1,0.2], [1,0.4,0.25], [1,0,1]]
+	#som.train(np.array( training_data ))
+	f = open('data/2012_5_3_12_55_39.txt', 'r') #droplets.mov blue droplet
+	x = pickle.load(f)
+	f = open('data/2012_5_3_12_33_10.txt', 'r') #droplets.mov red droplet
+	y = pickle.load(f)
+	#f = open('data/2012_5_3_19_5_37.txt','r')
 	#x = pickle.load(f)
-	som.train(np.array(training_data))
+	print len(x+y)
+	testsom.train(np.array(x+y))
+	#testsom.save("data/som.dat")
 
 	results = cv.CreateImage( (500, 500), 8, 3)
 	sideSquare = 500/sideSize
+
 	for i in xrange(sideSize):
 		for j in xrange(sideSize):
 			cv.Rectangle(results, (int(i*sideSquare), int(j*sideSquare)), 
 				(int(i*sideSquare+sideSquare), int(j*sideSquare+sideSquare)), 
-				(som.nodes[i,j,0]*255, som.nodes[i,j,1]*255, som.nodes[i,j,2]*255), 
+				(testsom.nodes[i,j,0]*255, testsom.nodes[i,j,1]*255, 0), 
 				cv.CV_FILLED)
-	
+
 	cv.NamedWindow('results', cv.CV_WINDOW_AUTOSIZE)
 	cv.ShowImage('results', results)
 	time_end = time()
