@@ -52,7 +52,7 @@ class TMSolver():
 		cv.SetMouseCallback("Undistort", self.mouseHandler, 0)
 
 		self.clicks = 1
-		self.tp = [245,43,252,49,261,57] # different tool positions. right now is static
+		self.tp = [244,37,255,43,265,54] # different tool positions. right now is static
 		self.pixels = []
 		self.alpha = 0 # rotation angle, to be calculated
 		self.tx = 0 # translation over x, to be calculated
@@ -60,9 +60,9 @@ class TMSolver():
 		self.sx = 0 # scaling factor over x
 		self.sy = 0 # scaling factor over y
 
-		self.p.send_now("G1 X245 Y43 F10000") #MOVE TO THIS POSITION
+		self.p.send_now("G1 X244 Y37 F12000") #MOVE TO THIS POSITION
 		self.p.send_now("P4 G500") # WAIT 0.5S
-		self.p.send_now("M43 P2 S55") # MOVE SYR DOWN
+		self.p.send_now("M43 P2 S62") # MOVE SYR DOWN
 
 		while(1):
 			image=cv.QueryFrame(capture)
